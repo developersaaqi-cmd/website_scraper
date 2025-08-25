@@ -1,103 +1,176 @@
-import Image from "next/image";
+"use client";
+
+import { useState } from "react";
+import pLimit from "p-limit";
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [urls, setUrls] = useState("");
+  const [results, setResults] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState({ processed: 0, fetched: 0 });
+  const [timeTaken, setTimeTaken] = useState<number | null>(null);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
+  async function handleBulkScrape() {
+    const urlList = urls
+      .split("\n")
+      .map((u) => u.trim())
+      .filter(Boolean);
+
+    if (urlList.length === 0) return;
+
+    setLoading(true);
+    setResults([]);
+    setProgress({ processed: 0, fetched: 0 });
+    setTimeTaken(null);
+
+    const startTime = performance.now(); // Start timer
+
+    const limit = pLimit(30);
+    let tempResults: any[] = [];
+    let processedCount = 0;
+
+    const tasks = urlList.map((url) =>
+      limit(async () => {
+        try {
+          const res = await fetch("/api/scrape", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ urls: [url] }),
+          });
+          const data = await res.json();
+
+          processedCount++;
+          if (data.results && data.results.length > 0) {
+            data.results.forEach((item: { data: { emails: string | any[]; phones: string | any[]; social: {}; }; }) => {
+              if (
+                (item.data.emails && item.data.emails.length) ||
+                (item.data.phones && item.data.phones.length) ||
+                (item.data.social && Object.keys(item.data.social).length)
+              ) {
+                tempResults.push(item);
+              }
+            });
+          }
+
+          setProgress({ processed: processedCount, fetched: tempResults.length });
+          setResults([...tempResults]);
+        } catch {
+          processedCount++;
+          setProgress({ processed: processedCount, fetched: tempResults.length });
+        }
+      })
+    );
+
+    await Promise.all(tasks);
+
+    const endTime = performance.now(); // End timer
+    setTimeTaken((endTime - startTime) / 1000); // time in seconds
+
+    setLoading(false);
+  }
+
+  function handleCopy() {
+    navigator.clipboard.writeText(JSON.stringify(results, null, 2));
+    alert("JSON copied to clipboard!");
+  }
+
+  function handleDownloadJSON() {
+    const blob = new Blob([JSON.stringify(results, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "scrape-results.json";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  const urlCount = typeof window !== "undefined" ? urls.split("\n").filter(Boolean).length : 0;
+
+  return (
+    <div className="p-8 font-sans bg-gray-50 min-h-screen">
+      <div className="max-w-6xl mx-auto">
+        <h1 className="text-4xl font-extrabold mb-6 text-center text-blue-700">Bulk Website Scraper</h1>
+
+        {/* Top Buttons */}
+        <div className="flex justify-center gap-4 mb-6">
           <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
+            href="https://www.convertcsv.com/json-to-csv.htm"
             target="_blank"
-            rel="noopener noreferrer"
+            className="px-4 py-2 bg-indigo-600 text-white rounded-lg shadow hover:bg-indigo-700 transition"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
+            JSON → Excel
           </a>
           <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
+            href="https://tableconvert.com/excel-to-json"
             target="_blank"
-            rel="noopener noreferrer"
+            className="px-4 py-2 bg-green-600 text-white rounded-lg shadow hover:bg-green-700 transition"
           >
-            Read our docs
+            Excel → JSON
           </a>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+
+        {/* Input */}
+        <textarea
+          rows={6}
+          placeholder="Enter one URL per line"
+          value={urls}
+          onChange={(e) => setUrls(e.target.value)}
+          className="w-full p-4 border border-gray-300 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4 resize-none"
+        />
+
+        {/* Action Buttons */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-6">
+          <button
+            onClick={handleBulkScrape}
+            disabled={loading || !urls.trim()}
+            className="w-full sm:w-auto px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow hover:bg-blue-700 disabled:opacity-50 transition"
+          >
+            {loading ? "Processing..." : "Fetch All"}
+          </button>
+
+          {typeof window !== "undefined" && urlCount > 0 && (
+            <span className="text-gray-700 font-medium">
+              Processed {progress.processed} / {urlCount} (Fetched: {progress.fetched})
+            </span>
+          )}
+
+          {!loading && results.length > 0 && typeof window !== "undefined" && (
+            <div className="flex gap-2">
+              <button
+                onClick={handleCopy}
+                className="px-5 py-3 bg-green-600 text-white rounded-lg shadow hover:bg-green-700 transition"
+              >
+                Copy JSON
+              </button>
+              <button
+                onClick={handleDownloadJSON}
+                className="px-5 py-3 bg-yellow-500 text-white rounded-lg shadow hover:bg-yellow-600 transition"
+              >
+                Download JSON
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Time Taken */}
+        {!loading && timeTaken !== null && (
+          <div className="text-gray-700 mb-4">
+            <span className="font-semibold">Total Time Taken:</span> {timeTaken.toFixed(2)} seconds
+          </div>
+        )}
+
+        {/* JSON Results */}
+        {typeof window !== "undefined" && results.length > 0 && (
+          <div className="bg-white rounded-xl shadow p-4 overflow-x-auto mb-6">
+            <h2 className="text-lg font-semibold mb-2 text-gray-700">Scrape Results (JSON)</h2>
+            <pre className="bg-gray-100 rounded-lg p-4 overflow-auto max-h-96 text-sm text-gray-800 font-mono">
+              {JSON.stringify(results, null, 2)}
+            </pre>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
